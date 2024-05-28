@@ -136,8 +136,8 @@ MAPFILE_FORMAT_HELP = '''
 # create CLI arguments
 def create_args():
     parser = argparse.ArgumentParser(
-                        prog='extract',
-                        description='extract firmware blocks',
+                        prog='Firmware Splitter',
+                        description='extract and split firmware blocks',
                         epilog=MAPFILE_FORMAT_HELP)
     parser.add_argument('-i', '--input',
                         help='binary firmware file (default: firmware.bin)',
