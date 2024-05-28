@@ -136,7 +136,7 @@ MAPFILE_FORMAT_HELP = '''
 # create CLI arguments
 def create_args():
     parser = argparse.ArgumentParser(
-                        prog='Firmware Splitter',
+                        prog='firmware_splitter',
                         description='extract and split firmware blocks',
                         epilog=MAPFILE_FORMAT_HELP)
     parser.add_argument('-i', '--input',
