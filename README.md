@@ -10,7 +10,7 @@ Simple python script for splitting firmware binary files according to given map 
 ```
 firmware_splitter.py -h
 
-usage: Firmware Splitter [-h] [-i INPUT] [-o OUTPUT] [-m MAPFILE] [-p] [--dry-run] [-v]
+usage: firmware_splitter [-h] [-i INPUT] [-o OUTPUT] [-m MAPFILE] [-p] [--dry-run] [-v]
 
 extract and split firmware blocks
 
