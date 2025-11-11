@@ -74,51 +74,98 @@ OUTPUT_PATH_DEFAULT = 'output'
 # format for printing hex values for block offset and size
 HEX_FORMAT = '0x{:08x}'
 
-# field names for structure holding block title, offset, size, output file
-FIELD_NAME = 'name'
-FIELD_BEGIN = 'begin'
-FIELD_SIZE = 'size'
-FIELD_OUTPUT = 'output'
+
+class Block:
+    def __init__(self):
+        self.name = ""
+        self.begin = 0
+        self.size = 0
+        self.output = ""
 
 
-# extract each firmware block and save in output dir
-def extract(filename, blocks, output_path=OUTPUT_PATH_DEFAULT):
-    # open flash dump
-    with open(filename, 'rb') as infile:
-        # create subdirectory for an output
-        os.makedirs(output_path, exist_ok = True)
-
-        # processing blocks with offset and size
-        for block in blocks:
-            # create part file
-            output_filename = os.path.join(output_path, block[FIELD_OUTPUT])
-            with open(output_filename, 'wb') as outfile:
-                infile.seek(block[FIELD_BEGIN])
-                data = infile.read(block[FIELD_SIZE])
-                outfile.write(data)
+    def from_str(self, line: str):
+        cols = line.strip().split(maxsplit=4)
+        self.name = cols[0]
+        self.begin = int(cols[1], 16)
+        self.size = int(cols[2], 16)
+        self.output = cols[3]
 
 
-# show given blocks table
-def print_blocks(blocks):
-    # print each parsed block as a line
-    for block in blocks:
-        print(block[FIELD_NAME], end=' ')
-        print(HEX_FORMAT.format(block[FIELD_BEGIN]), end=' ')
-        print(HEX_FORMAT.format(block[FIELD_SIZE]), end=' ')
-        print(block[FIELD_OUTPUT], end='\n')
+    def __repr__(self):
+        begin = HEX_FORMAT.format(self.begin) 
+        size = HEX_FORMAT.format(self.size) 
+        return f"Block {{ name: {self.name}, begin: {begin}, size: {size}, output: {self.output} }}"
 
 
-# parse blocks structure from text file map
-def read_blocks(filename):
-    blocks = []
-    #with open('layout.cfg', 'w') as configfile:
-    with open(filename, 'r') as f:
-        for line in f:
-            cols = line.strip().split(maxsplit=4)
-            block = { FIELD_NAME: cols[0], FIELD_BEGIN: int(cols[1], 16), FIELD_SIZE: int(cols[2], 16), FIELD_OUTPUT: cols[3] }
-            blocks.append(block)
+    def __str__(self):
+        """
 
-    return blocks
+        Returns
+        -------
+
+
+        """
+        begin = HEX_FORMAT.format(self.begin) 
+        size = HEX_FORMAT.format(self.size) 
+        return f"{self.name} {begin} {size} {self.output}"
+
+
+    def extract(self, infile, output_path=OUTPUT_PATH_DEFAULT):
+        # create part file
+        output_filename = os.path.join(output_path, self.output)
+        with open(output_filename, 'wb') as outfile:
+            infile.seek(self.begin)
+            data = infile.read(self.size)
+            outfile.write(data)
+
+
+class BlockList:
+    def __init__(self):
+        self.blocks = []
+
+
+    def __repr__(self):
+        v = []
+        for block in self.blocks:
+            v.append(repr(block))
+        s = ', '.join(v)
+        return f"Blocks [{s}]"
+
+
+    def __str__(self):
+        v = []
+        # print each parsed block as a line
+        for block in self.blocks:
+            v.append(str(block))
+        s = '\n'.join(v)
+        return s
+
+
+    def from_str(self, s: str):
+        for line in s:
+            block = Block()
+            block.from_str(line)
+            self.blocks.append(block)
+
+
+    # parse blocks structure from text file map
+    def from_file(self, filename):
+        #with open('layout.cfg', 'w') as configfile:
+        with open(filename, 'r') as f:
+            self.from_str(f)
+
+
+    def extract(self, filename, output_path=OUTPUT_PATH_DEFAULT):
+
+        # open flash dump
+        with open(filename, 'rb') as infile:
+            # create subdirectory for an output
+            os.makedirs(output_path, exist_ok = True)
+
+            # processing blocks with offset and size
+            for block in self.blocks:
+                block.extract(infile, output_path)
+
 
 
 # example of map file
@@ -137,33 +184,52 @@ MAPFILE_FORMAT_HELP = '''
 def create_args():
     parser = argparse.ArgumentParser(
                         prog='firmware_splitter',
-                        description='extract and split firmware blocks',
+                        description='extract, split and save firmware blocks',
                         epilog=MAPFILE_FORMAT_HELP)
+
+    # specify input file
     parser.add_argument('-i', '--input',
                         help='binary firmware file (default: firmware.bin)',
                         default=FIRMWARE_DEFAULT)
+
+    # specify output file
     parser.add_argument('-o',
                         '--output',
                         help='output directory (default: output)',
                         default=OUTPUT_PATH_DEFAULT)
+
+    # specify map file
     parser.add_argument('-m',
                         '--mapfile',
                         help='map file (default: firmware.map)',
                         default=MAPFILE_DEFAULT)
+
+    # print
     parser.add_argument('-p',
                         '--print-blocks',
                         help='print blocks parsed from file',
                         default=False,
                         action='store_true'
                         )
+
+    # dry-run
     parser.add_argument('--dry-run',
                         help='create no files, parse and print info only',
                         default=False,
                         action='store_true'
                         )
+
+    # verbose
     parser.add_argument('-v',
                         '--verbose',
                         action='store_true')
+
+    # version
+    parser.add_argument("-V",
+                        "--version",
+                        action='version',
+                        version="%(prog)s 0.2")
+
     return parser
 
 
@@ -173,7 +239,8 @@ def use_args(args):
     if args.verbose:
         print(f'reading map file {args.mapfile} ...')
 
-    blocks = read_blocks(args.mapfile)
+    blocks = BlockList()
+    blocks.from_file(args.mapfile)
 
     # print blocks
     if args.print_blocks:
@@ -181,15 +248,16 @@ def use_args(args):
         if args.verbose:
             print('printing blocks...')
 
-        print_blocks(blocks)
+        print(blocks)
 
-    # firmware input -> output
-    if args.verbose:
-        print(f'reading firmware file {args.input} ...')
-        print(f'saving to output directory {args.output} ...')
+    else:
+        # firmware input -> output
+        if args.verbose:
+            print(f'reading firmware file {args.input} ...')
+            print(f'saving to output directory {args.output} ...')
 
-    if not args.dry_run:
-        extract(args.input, blocks, output_path=args.output)
+        if not args.dry_run:
+            blocks.extract(args.input)
 
 
 # main
