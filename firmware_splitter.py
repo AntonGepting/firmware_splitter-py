@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys, os, argparse
+import pathlib
 
 # blocks = [
 #         {
@@ -64,15 +65,6 @@ import sys, os, argparse
 #         },
 # ]
 
-# input file with map of blocks in firmware
-MAPFILE_DEFAULT = 'firmware.map'
-# input file with binary firmware
-FIRMWARE_DEFAULT = 'firmware.bin'
-# output subdirectory
-OUTPUT_PATH_DEFAULT = 'output'
-
-# format for printing hex values for block offset and size
-HEX_FORMAT = '0x{:08x}'
 
 # field names for structure holding block title, offset, size, output file
 FIELD_NAME = 'name'
@@ -82,88 +74,109 @@ FIELD_OUTPUT = 'output'
 
 
 # extract each firmware block and save in output dir
-def extract(filename, blocks, output_path=OUTPUT_PATH_DEFAULT):
+def extract(infile, blocks, output_path):
     # open flash dump
-    with open(filename, 'rb') as infile:
-        # create subdirectory for an output
-        os.makedirs(output_path, exist_ok = True)
+    # create subdirectory for an output
+    os.makedirs(output_path, exist_ok = True)
 
-        # processing blocks with offset and size
-        for block in blocks:
-            # create part file
-            output_filename = os.path.join(output_path, block[FIELD_OUTPUT])
-            with open(output_filename, 'wb') as outfile:
-                infile.seek(block[FIELD_BEGIN])
-                data = infile.read(block[FIELD_SIZE])
-                outfile.write(data)
+    # processing blocks with offset and size
+    for block in blocks:
+        # create part file
+        output_filename = os.path.join(output_path, block[FIELD_OUTPUT])
+        with open(output_filename, 'wb') as outfile:
+            infile.seek(block[FIELD_BEGIN])
+            data = infile.read(block[FIELD_SIZE])
+            outfile.write(data)
 
 
 # show given blocks table
 def print_blocks(blocks):
     # print each parsed block as a line
     for block in blocks:
-        print(block[FIELD_NAME], end=' ')
-        print(HEX_FORMAT.format(block[FIELD_BEGIN]), end=' ')
-        print(HEX_FORMAT.format(block[FIELD_SIZE]), end=' ')
-        print(block[FIELD_OUTPUT], end='\n')
+        print("{: <24} 0x{:08x} 0x{:08x} {: <24}".format(block[FIELD_NAME],
+                                                         block[FIELD_BEGIN],
+                                                         block[FIELD_SIZE],
+                                                         block[FIELD_OUTPUT]))
+
 
 
 # parse blocks structure from text file map
-def read_blocks(filename):
+def read_blocks(file):
     blocks = []
-    #with open('layout.cfg', 'w') as configfile:
-    with open(filename, 'r') as f:
-        for line in f:
-            cols = line.strip().split(maxsplit=4)
-            block = { FIELD_NAME: cols[0], FIELD_BEGIN: int(cols[1], 16), FIELD_SIZE: int(cols[2], 16), FIELD_OUTPUT: cols[3] }
-            blocks.append(block)
+    for line in file:
+        cols = line.strip().split(maxsplit=4)
+        # int(x, 0) interpret the string exactly as an integer literal
+        block = { FIELD_NAME: cols[0], FIELD_BEGIN: int(cols[1], 0),
+                 FIELD_SIZE: int(cols[2], 0), FIELD_OUTPUT: cols[3] }
+        blocks.append(block)
 
     return blocks
 
 
 # example of map file
-MAPFILE_FORMAT_HELP = '''
+MAPFILE_FORMAT_HELP = """
     map file syntax:
-        <block_name1> <begin>    <size>     <output_filename1>\\n
-        <block_name2> <begin>    <size>     <output_filename2>\\n
+        <BLOCK_NAME1> <BEGIN> <SIZE> <OUTPUT_FILENAME1>\\n
+        <BLOCK_NAME2> <BEGIN> <SIZE> <OUTPUT_FILENAME2>\\n
+
+    <BLOCK_NAME> - free to choose
+
+    <BEGIN> <SIZE> - format for numbers allowed:
+                               1 - dec
+                      0x00000001 - hex
+                      0X00000001 - hex
+                      0o00000001 - oct
+                      0O00000001 - oct
+                      0b00000001 - bin
+                      0B00000001 - bin
         ...
     example:
         u-boot        0x00000000 0x00020000 uboot.bin \\n
         u-boot-env    0x00020000 0x00020000 ubootenv.bin
-    '''
+    """
 
 
 # create CLI arguments
 def create_args():
     parser = argparse.ArgumentParser(
-                        prog='firmware_splitter',
-                        description='extract and split firmware blocks',
+                        prog="firmware_splitter",
+                        description="extract and split firmware blocks",
                         epilog=MAPFILE_FORMAT_HELP)
-    parser.add_argument('-i', '--input',
-                        help='binary firmware file (default: firmware.bin)',
-                        default=FIRMWARE_DEFAULT)
-    parser.add_argument('-o',
-                        '--output',
-                        help='output directory (default: output)',
-                        default=OUTPUT_PATH_DEFAULT)
-    parser.add_argument('-m',
-                        '--mapfile',
-                        help='map file (default: firmware.map)',
-                        default=MAPFILE_DEFAULT)
-    parser.add_argument('-p',
-                        '--print-blocks',
-                        help='print blocks parsed from file',
+
+    # input file with binary firmware
+    parser.add_argument("input",
+                        type=argparse.FileType('rb'),
+                        help="binary firmware file (default: firmware.bin)",
+                        default="firmware.bin")
+
+    parser.add_argument("-o",
+                        "--output",
+                        type=pathlib.Path,
+                        help="output directory (default: ./output/)",
+                        default="output")
+
+    parser.add_argument("-m",
+                        "--mapfile",
+                        type=argparse.FileType('r'),
+                        help="map file (default: firmware.map)",
+                        default="firmware.map")
+
+    parser.add_argument("-p",
+                        "--print-blocks",
+                        help="print blocks parsed from map file",
                         default=False,
                         action='store_true'
                         )
-    parser.add_argument('--dry-run',
-                        help='create no files, parse and print info only',
+
+    parser.add_argument("--dry-run",
+                        help="create no files, parse and print info only",
                         default=False,
-                        action='store_true'
-                        )
-    parser.add_argument('-v',
-                        '--verbose',
                         action='store_true')
+
+    parser.add_argument("-v",
+                        "--verbose",
+                        action='store_true')
+
     return parser
 
 
@@ -171,7 +184,7 @@ def create_args():
 def use_args(args):
     # blocks
     if args.verbose:
-        print(f'reading map file {args.mapfile} ...')
+        print(f"reading map file {args.mapfile.name} ...")
 
     blocks = read_blocks(args.mapfile)
 
@@ -179,21 +192,21 @@ def use_args(args):
     if args.print_blocks:
 
         if args.verbose:
-            print('printing blocks...')
+            print("printing blocks...")
 
         print_blocks(blocks)
 
     # firmware input -> output
     if args.verbose:
-        print(f'reading firmware file {args.input} ...')
-        print(f'saving to output directory {args.output} ...')
+        print(f"reading firmware file {args.input.name} ...")
+        print(f"saving to output directory {args.output} ...")
 
     if not args.dry_run:
-        extract(args.input, blocks, output_path=args.output)
+        extract(args.input, blocks, args.output)
 
 
 # main
-if (__name__ == "__main__"):
+if (__name__ == '__main__'):
     parser = create_args()
     args = parser.parse_args()
     use_args(args)
